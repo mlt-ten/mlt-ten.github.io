@@ -1,0 +1,173 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+    <title>早押しクイズボタン</title>
+    <style>
+        body { font-family: sans-serif; text-align: center; background: #f0f2f5; margin: 0; padding: 20px; }
+        .hidden { display: none !important; }
+        button { cursor: pointer; border: none; border-radius: 8px; transition: 0.2s; }
+        .btn-primary { background: #007bff; color: white; padding: 15px 30px; font-size: 18px; margin: 10px; width: 80%; max-width: 300px; }
+        .btn-secondary { background: #6c757d; color: white; padding: 10px 20px; margin: 5px; }
+        
+        /* 早押しボタン */
+        #buzzer-btn {
+            width: 220px; height: 220px; border-radius: 50%; margin: 30px auto;
+            display: flex; align-items: center; justify-content: center;
+            font-size: 24px; font-weight: bold; color: white; box-shadow: 0 6px 10px rgba(0,0,0,0.2);
+        }
+        .buzzer-wait { background: #6c757d; }
+        .buzzer-active { background: #ff4500; animation: pulse 1.5s infinite; }
+        .buzzer-pressed { background: #28a745; }
+
+        @keyframes pulse { 0% { transform: scale(1); } 50% { transform: scale(1.05); } 100% { transform: scale(1); } }
+
+        /* ホスト用ログ */
+        #log-list { list-style: none; padding: 0; max-width: 400px; margin: 20px auto; background: white; border-radius: 8px; }
+        #log-list li { padding: 12px; border-bottom: 1px solid #eee; display: flex; justify-content: space-between; }
+        .status-box { font-size: 18px; font-weight: bold; padding: 10px; margin-bottom: 10px; border-radius: 5px; display: inline-block; }
+        .status-active { background: #d4edda; color: #155724; }
+        .status-idle { background: #f8d7da; color: #721c24; }
+    </style>
+</head>
+<body>
+
+    <div id="screen-title">
+        <h1>早押しクイズ</h1>
+        <button class="btn-primary" onclick="showScreen('screen-host-panel')">ホスト (出題者)</button>
+        <button class="btn-primary" onclick="showScreen('screen-guest-login')">ゲスト (回答者)</button>
+    </div>
+
+    <div id="screen-host-panel" class="hidden">
+        <h2>管理画面</h2>
+        <div id="host-status" class="status-box status-idle">状態：待機中</div>
+        <div>
+            <button class="btn-primary" onclick="setGameStatus('active')" style="background:#28a745; width:40%;">開始</button>
+            <button class="btn-primary" onclick="setGameStatus('idle')" style="background:#dc3545; width:40%;">終了</button>
+        </div>
+        <hr>
+        <button class="btn-secondary" onclick="resetLogs()">ログリセット</button>
+        <ul id="log-list"></ul>
+        <button class="btn-secondary" onclick="location.reload()">トップへ</button>
+    </div>
+
+    <div id="screen-guest-login" class="hidden">
+        <h2>名前を入力</h2>
+        <input type="text" id="username" style="padding:15px; width:70%; font-size:18px;" placeholder="ニックネーム"><br>
+        <button class="btn-primary" onclick="guestLogin()">決定</button>
+    </div>
+
+    <div id="screen-guest-buzzer" class="hidden">
+        <h2 id="display-name"></h2>
+        <p id="msg">開始を待っています</p>
+        <div id="buzzer-btn" class="buzzer-wait" onclick="pushBuzzer()">WAIT</div>
+    </div>
+
+    <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-app-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-database-compat.js"></script>
+
+    <script>
+        const firebaseConfig = {
+            apiKey: "AIzaSyAfad9ZmJD3bc-CL25nSHkOGyC7Pt2lOaM",
+            authDomain: "quiz-9b055.firebaseapp.com",
+            databaseURL: "https://quiz-9b055-default-rtdb.firebaseio.com",
+            projectId: "quiz-9b055",
+            storageBucket: "quiz-9b055.firebasestorage.app",
+            messagingSenderId: "137324299868",
+            appId: "1:137324299868:web:b673b97ac71e5279d58899",
+            measurementId: "G-H900MNTQ5T"
+        };
+
+        firebase.initializeApp(firebaseConfig);
+        const db = firebase.database();
+
+        let myName = "";
+        let hasAnswered = false;
+        let currentStatus = "idle";
+
+        function showScreen(id) {
+            // 全画面を隠す
+            document.getElementById('screen-title').classList.add('hidden');
+            document.getElementById('screen-host-panel').classList.add('hidden');
+            document.getElementById('screen-guest-login').classList.add('hidden');
+            document.getElementById('screen-guest-buzzer').classList.add('hidden');
+            
+            // 指定の画面を表示
+            const target = document.getElementById(id);
+            if(target) {
+                target.classList.remove('hidden');
+            } else {
+                console.error("Screen ID not found:", id);
+            }
+
+            if(id === 'screen-host-panel') initHost();
+        }
+
+        function initHost() {
+            db.ref('game/status').on('value', (snap) => {
+                const s = snap.val() || 'idle';
+                const el = document.getElementById('host-status');
+                el.innerText = s === 'active' ? "状態：受付中" : "状態：終了";
+                el.className = "status-box " + (s === 'active' ? "status-active" : "status-idle");
+            });
+
+            db.ref('game/logs').on('value', (snap) => {
+                const list = document.getElementById('log-list');
+                list.innerHTML = "";
+                if(!snap.exists()) return;
+                
+                let logs = [];
+                snap.forEach(child => { logs.push(child.val()); });
+                logs.sort((a, b) => a.timestamp - b.timestamp);
+                
+                logs.forEach((data, i) => {
+                    const li = document.createElement('li');
+                    li.innerHTML = `<span><b>${i+1}位</b> ${data.name}</span>`;
+                    list.appendChild(li);
+                });
+            });
+        }
+
+        function setGameStatus(s) { db.ref('game/status').set(s); }
+        function resetLogs() { if(confirm("リセット？")) { db.ref('game/logs').remove(); setGameStatus('idle'); } }
+
+        function guestLogin() {
+            myName = document.getElementById('username').value;
+            if(!myName) return alert("名前！");
+            document.getElementById('display-name').innerText = myName;
+            showScreen('screen-guest-buzzer');
+            initGuest();
+        }
+
+        function initGuest() {
+            db.ref('game/status').on('value', (snap) => {
+                currentStatus = snap.val() || 'idle';
+                if(currentStatus === 'idle') hasAnswered = false;
+                updateUI();
+            });
+        }
+
+        function updateUI() {
+            const btn = document.getElementById('buzzer-btn');
+            const msg = document.getElementById('msg');
+            if(currentStatus === 'idle') {
+                btn.className = "buzzer-wait"; btn.innerText = "WAIT"; msg.innerText = "開始を待っています";
+            } else {
+                if(hasAnswered) {
+                    btn.className = "buzzer-pressed"; btn.innerText = "済"; msg.innerText = "回答済み";
+                } else {
+                    btn.className = "buzzer-active"; btn.innerText = "PUSH!"; msg.innerText = "押せます！";
+                }
+            }
+        }
+
+        function pushBuzzer() {
+            if(currentStatus !== 'active' || hasAnswered) return;
+            hasAnswered = true;
+            updateUI();
+            db.ref('game/logs').push({ name: myName, timestamp: firebase.database.ServerValue.TIMESTAMP });
+        }
+    </script>
+</body>
+</html>
