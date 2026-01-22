@@ -3,71 +3,86 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
-    <title>早押しクイズボタン</title>
+    <title>クイズ＆秒数当て</title>
     <style>
-        body { font-family: sans-serif; text-align: center; background: #f0f2f5; margin: 0; padding: 20px; }
+        body { font-family: sans-serif; text-align: center; background: #f0f2f5; margin: 0; padding: 20px; touch-action: manipulation; }
         .hidden { display: none !important; }
-        button { cursor: pointer; border: none; border-radius: 8px; transition: 0.2s; }
-        .btn-primary { background: #007bff; color: white; padding: 15px 30px; font-size: 18px; margin: 10px; width: 80%; max-width: 300px; }
+        button { cursor: pointer; border: none; border-radius: 8px; transition: 0.2s; font-weight: bold; }
+        .btn-primary { background: #007bff; color: white; padding: 15px; font-size: 18px; margin: 10px; width: 80%; max-width: 300px; }
         .btn-secondary { background: #6c757d; color: white; padding: 10px 20px; margin: 5px; }
         
-        /* 早押しボタン */
-        #buzzer-btn {
-            width: 220px; height: 220px; border-radius: 50%; margin: 30px auto;
+        /* タイマー表示 */
+        #timer-display { font-size: 48px; font-weight: bold; margin: 20px; font-family: monospace; color: #333; }
+        
+        /* 早押しボタン / ストップボタン */
+        .big-btn {
+            width: 220px; height: 220px; border-radius: 50%; margin: 20px auto;
             display: flex; align-items: center; justify-content: center;
-            font-size: 24px; font-weight: bold; color: white; box-shadow: 0 6px 10px rgba(0,0,0,0.2);
+            font-size: 24px; color: white; box-shadow: 0 6px 10px rgba(0,0,0,0.2);
         }
-        .buzzer-wait { background: #6c757d; }
-        .buzzer-active { background: #ff4500; animation: pulse 1.5s infinite; }
-        .buzzer-pressed { background: #28a745; }
+        .btn-wait { background: #6c757d; pointer-events: none; }
+        .btn-active { background: #ff4500; cursor: pointer; animation: pulse 1.5s infinite; }
+        .btn-done { background: #28a745; pointer-events: none; }
 
         @keyframes pulse { 0% { transform: scale(1); } 50% { transform: scale(1.05); } 100% { transform: scale(1); } }
 
-        /* ホスト用ログ */
-        #log-list { list-style: none; padding: 0; max-width: 400px; margin: 20px auto; background: white; border-radius: 8px; }
+        /* ログ */
+        #log-area { max-width: 400px; margin: 10px auto; background: white; border-radius: 8px; border: 1px solid #ddd; }
+        #log-list { list-style: none; padding: 0; margin: 0; }
         #log-list li { padding: 12px; border-bottom: 1px solid #eee; display: flex; justify-content: space-between; }
-        .status-box { font-size: 18px; font-weight: bold; padding: 10px; margin-bottom: 10px; border-radius: 5px; display: inline-block; }
-        .status-active { background: #d4edda; color: #155724; }
-        .status-idle { background: #f8d7da; color: #721c24; }
+        .rank-1 { background: #fff3cd; font-weight: bold; }
     </style>
 </head>
 <body>
 
-    <div id="screen-title">
-        <h1>早押しクイズ</h1>
-        <button class="btn-primary" onclick="showScreen('screen-host-panel')">ホスト (出題者)</button>
-        <button class="btn-primary" onclick="showScreen('screen-guest-login')">ゲスト (回答者)</button>
+    <div id="screen-mode-select">
+        <h1>モード選択</h1>
+        <button class="btn-primary" onclick="setMode('quiz')">早押しクイズ</button>
+        <button class="btn-primary" onclick="setMode('timer')">15秒あてゲーム</button>
     </div>
 
-    <div id="screen-host-panel" class="hidden">
-        <h2>管理画面</h2>
-        <div id="host-status" class="status-box status-idle">状態：待機中</div>
-        <div>
-            <button class="btn-primary" onclick="setGameStatus('active')" style="background:#28a745; width:40%;">開始</button>
-            <button class="btn-primary" onclick="setGameStatus('idle')" style="background:#dc3545; width:40%;">終了</button>
-        </div>
-        <hr>
-        <button class="btn-secondary" onclick="resetLogs()">ログリセット</button>
-        <ul id="log-list"></ul>
-        <button class="btn-secondary" onclick="location.reload()">トップへ</button>
+    <div id="screen-role-select" class="hidden">
+        <h1 id="selected-mode-title"></h1>
+        <button class="btn-primary" onclick="showLogin('host')">ホスト (出題者)</button>
+        <button class="btn-primary" onclick="showLogin('guest')">ゲスト (回答者)</button>
+        <br><button class="btn-secondary" onclick="location.reload()">戻る</button>
     </div>
 
     <div id="screen-guest-login" class="hidden">
         <h2>名前を入力</h2>
         <input type="text" id="username" style="padding:15px; width:70%; font-size:18px;" placeholder="ニックネーム"><br>
-        <button class="btn-primary" onclick="guestLogin()">決定</button>
+        <button class="btn-primary" onclick="guestJoin()">参加する</button>
     </div>
 
-    <div id="screen-guest-buzzer" class="hidden">
+    <div id="screen-host-panel" class="hidden">
+        <h2 id="host-title">管理画面</h2>
+        <div id="timer-display" class="hidden">0.00</div>
+        
+        <div>
+            <button class="btn-primary" id="host-main-btn" onclick="toggleGame()" style="width:45%;">スタート</button>
+            <button class="btn-primary" onclick="resetGame()" style="background:#dc3545; width:45%;">リセット</button>
+        </div>
+        
+        <div id="log-area" class="hidden">
+            <h3 style="margin:10px;">ランキング</h3>
+            <ul id="log-list"></ul>
+        </div>
+        <button class="btn-secondary" id="log-toggle-btn" onclick="toggleLogView()">ログを表示</button>
+        <br><button class="btn-secondary" onclick="location.reload()">トップへ</button>
+    </div>
+
+    <div id="screen-guest-play" class="hidden">
         <h2 id="display-name"></h2>
-        <p id="msg">開始を待っています</p>
-        <div id="buzzer-btn" class="buzzer-wait" onclick="pushBuzzer()">WAIT</div>
+        <div id="guest-timer-display" class="hidden">0.00</div>
+        <div id="action-btn" class="big-btn btn-wait" onclick="handleGuestAction()">WAIT</div>
+        <p id="guest-msg">ホストの開始を待っています</p>
     </div>
 
     <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-app-compat.js"></script>
     <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-database-compat.js"></script>
 
     <script>
+        // --- Firebase設定（ご自身のものに差し替えてください） ---
         const firebaseConfig = {
             apiKey: "AIzaSyAfad9ZmJD3bc-CL25nSHkOGyC7Pt2lOaM",
             authDomain: "quiz-9b055.firebaseapp.com",
@@ -76,97 +91,182 @@
             storageBucket: "quiz-9b055.firebasestorage.app",
             messagingSenderId: "137324299868",
             appId: "1:137324299868:web:b673b97ac71e5279d58899",
-            measurementId: "G-H900MNTQ5T"
         };
-
         firebase.initializeApp(firebaseConfig);
         const db = firebase.database();
 
-        let myName = "";
-        let hasAnswered = false;
-        let currentStatus = "idle";
+        // 状態管理
+        let appMode = ''; // 'quiz' or 'timer'
+        let myName = '';
+        let status = 'idle';
+        let startTime = 0;
+        let timerInterval;
+        let hasActioned = false;
 
+        // 画面遷移
         function showScreen(id) {
-            // 全画面を隠す
-            document.getElementById('screen-title').classList.add('hidden');
-            document.getElementById('screen-host-panel').classList.add('hidden');
-            document.getElementById('screen-guest-login').classList.add('hidden');
-            document.getElementById('screen-guest-buzzer').classList.add('hidden');
-            
-            // 指定の画面を表示
-            const target = document.getElementById(id);
-            if(target) {
-                target.classList.remove('hidden');
-            } else {
-                console.error("Screen ID not found:", id);
-            }
-
-            if(id === 'screen-host-panel') initHost();
+            ['screen-mode-select','screen-role-select','screen-guest-login','screen-host-panel','screen-guest-play']
+            .forEach(s => document.getElementById(s).classList.add('hidden'));
+            document.getElementById(id).classList.remove('hidden');
         }
 
+        function setMode(mode) {
+            appMode = mode;
+            document.getElementById('selected-mode-title').innerText = mode === 'quiz' ? "早押しクイズ" : "15秒あてゲーム";
+            showScreen('screen-role-select');
+        }
+
+        function showLogin(role) {
+            if(role === 'host') showScreen('screen-host-panel'), initHost();
+            else showScreen('screen-guest-login');
+        }
+
+        function guestJoin() {
+            myName = document.getElementById('username').value;
+            if(!myName) return alert("名前を入力してください");
+            document.getElementById('display-name').innerText = myName;
+            showScreen('screen-guest-play');
+            initGuest();
+        }
+
+        /* --- 共有ロジック --- */
+        function updateTimerUI(displayId) {
+            if(status !== 'active') return;
+            const elapsed = (Date.now() - startTime) / 1000;
+            const el = document.getElementById(displayId);
+            if(appMode === 'timer' && elapsed > 5) {
+                el.innerText = "??:??";
+            } else {
+                el.innerText = elapsed.toFixed(2);
+            }
+        }
+
+        /* --- ホスト処理 --- */
         function initHost() {
-            db.ref('game/status').on('value', (snap) => {
-                const s = snap.val() || 'idle';
-                const el = document.getElementById('host-status');
-                el.innerText = s === 'active' ? "状態：受付中" : "状態：終了";
-                el.className = "status-box " + (s === 'active' ? "status-active" : "status-idle");
+            const path = `games/${appMode}/`;
+            if(appMode === 'timer') document.getElementById('timer-display').classList.remove('hidden');
+            
+            db.ref(path + 'status').on('value', snap => {
+                status = snap.val() || 'idle';
+                const btn = document.getElementById('host-main-btn');
+                btn.innerText = status === 'active' ? "ストップ" : "スタート";
+                if(status === 'active') {
+                    db.ref(path + 'startTime').once('value', s => {
+                        startTime = s.val();
+                        clearInterval(timerInterval);
+                        timerInterval = setInterval(() => updateTimerUI('timer-display'), 50);
+                    });
+                } else {
+                    clearInterval(timerInterval);
+                }
             });
 
-            db.ref('game/logs').on('value', (snap) => {
+            // ログ監視
+            db.ref(path + 'logs').on('value', snap => {
                 const list = document.getElementById('log-list');
                 list.innerHTML = "";
                 if(!snap.exists()) return;
-                
                 let logs = [];
-                snap.forEach(child => { logs.push(child.val()); });
-                logs.sort((a, b) => a.timestamp - b.timestamp);
-                
-                logs.forEach((data, i) => {
+                snap.forEach(c => { logs.push(c.val()); });
+
+                // 15秒あての場合は15秒に近い順にソート
+                if(appMode === 'timer') {
+                    logs.sort((a, b) => Math.abs(a.time - 15) - Math.abs(b.time - 15));
+                } else {
+                    logs.sort((a, b) => a.time - b.time);
+                }
+
+                logs.forEach((d, i) => {
                     const li = document.createElement('li');
-                    li.innerHTML = `<span><b>${i+1}位</b> ${data.name}</span>`;
+                    if(i === 0) li.className = 'rank-1';
+                    const valDisplay = appMode === 'timer' ? `${d.time.toFixed(2)}s` : "";
+                    li.innerHTML = `<span>${i+1}位: ${d.name}</span><span>${valDisplay}</span>`;
                     list.appendChild(li);
                 });
             });
         }
 
-        function setGameStatus(s) { db.ref('game/status').set(s); }
-        function resetLogs() { if(confirm("リセット？")) { db.ref('game/logs').remove(); setGameStatus('idle'); } }
-
-        function guestLogin() {
-            myName = document.getElementById('username').value;
-            if(!myName) return alert("名前！");
-            document.getElementById('display-name').innerText = myName;
-            showScreen('screen-guest-buzzer');
-            initGuest();
-        }
-
-        function initGuest() {
-            db.ref('game/status').on('value', (snap) => {
-                currentStatus = snap.val() || 'idle';
-                if(currentStatus === 'idle') hasAnswered = false;
-                updateUI();
-            });
-        }
-
-        function updateUI() {
-            const btn = document.getElementById('buzzer-btn');
-            const msg = document.getElementById('msg');
-            if(currentStatus === 'idle') {
-                btn.className = "buzzer-wait"; btn.innerText = "WAIT"; msg.innerText = "開始を待っています";
+        function toggleGame() {
+            const path = `games/${appMode}/`;
+            if(status === 'idle') {
+                db.ref(path).update({ status: 'active', startTime: firebase.database.ServerValue.TIMESTAMP });
             } else {
-                if(hasAnswered) {
-                    btn.className = "buzzer-pressed"; btn.innerText = "済"; msg.innerText = "回答済み";
-                } else {
-                    btn.className = "buzzer-active"; btn.innerText = "PUSH!"; msg.innerText = "押せます！";
-                }
+                db.ref(path + 'status').set('idle');
             }
         }
 
-        function pushBuzzer() {
-            if(currentStatus !== 'active' || hasAnswered) return;
-            hasAnswered = true;
-            updateUI();
-            db.ref('game/logs').push({ name: myName, timestamp: firebase.database.ServerValue.TIMESTAMP });
+        function resetGame() {
+            if(!confirm("リセットしますか？")) return;
+            const path = `games/${appMode}/`;
+            db.ref(path).remove();
+            document.getElementById('timer-display').innerText = "0.00";
+        }
+
+        function toggleLogView() {
+            const logArea = document.getElementById('log-area');
+            const btn = document.getElementById('log-toggle-btn');
+            logArea.classList.toggle('hidden');
+            btn.innerText = logArea.classList.contains('hidden') ? "ログを表示" : "ログを閉じる";
+        }
+
+        /* --- ゲスト処理 --- */
+        function initGuest() {
+            const path = `games/${appMode}/`;
+            if(appMode === 'timer') document.getElementById('guest-timer-display').classList.remove('hidden');
+
+            db.ref(path + 'status').on('value', snap => {
+                const newStatus = snap.val() || 'idle';
+                if(status === 'idle' && newStatus === 'active') hasActioned = false; // 開始時に権利復活
+                status = newStatus;
+                
+                if(status === 'active') {
+                    db.ref(path + 'startTime').once('value', s => {
+                        startTime = s.val();
+                        clearInterval(timerInterval);
+                        timerInterval = setInterval(() => updateTimerUI('guest-timer-display'), 50);
+                    });
+                } else {
+                    clearInterval(timerInterval);
+                }
+                updateGuestUI();
+            });
+        }
+
+        function updateGuestUI() {
+            const btn = document.getElementById('action-btn');
+            const msg = document.getElementById('guest-msg');
+            btn.innerText = appMode === 'quiz' ? "PUSH!" : "STOP!";
+            
+            if(status === 'idle') {
+                btn.className = "big-btn btn-wait";
+                msg.innerText = "ホストの開始を待っています";
+            } else if(hasActioned) {
+                btn.className = "big-btn btn-done";
+                btn.innerText = "済";
+                msg.innerText = "記録されました";
+            } else {
+                btn.className = "big-btn btn-active";
+                msg.innerText = appMode === 'quiz' ? "今だ！" : "15秒で止めて！";
+            }
+        }
+
+        function handleGuestAction() {
+            if(status !== 'active' || hasActioned) {
+                if(hasActioned) {
+                    const pop = document.createElement('div');
+                    pop.innerText = "回答は1回までです";
+                    pop.style = "position:fixed;top:50%;left:50%;transform:translate(-50%,-50%);background:rgba(0,0,0,0.8);color:white;padding:20px;border-radius:10px;";
+                    document.body.appendChild(pop);
+                    setTimeout(() => pop.remove(), 1000);
+                }
+                return;
+            }
+            
+            hasActioned = true;
+            const time = (Date.now() - startTime) / 1000;
+            const path = `games/${appMode}/logs`;
+            db.ref(path).push({ name: myName, time: time });
+            updateGuestUI();
         }
     </script>
 </body>
