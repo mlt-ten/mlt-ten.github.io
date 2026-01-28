@@ -38,7 +38,7 @@
     <div id="screen-mode-select">
         <h1>モード選択</h1>
         <button class="btn-primary" onclick="setMode('quiz')">早押しクイズ</button>
-        <button class="btn-primary" onclick="setMode('timer')">15秒あてゲーム</button>
+        <button class="btn-primary" onclick="setMode('timer')">秒数あてゲーム</button>
     </div>
 
     <div id="screen-role-select" class="hidden">
@@ -112,7 +112,7 @@
 
         function setMode(mode) {
             appMode = mode;
-            document.getElementById('selected-mode-title').innerText = mode === 'quiz' ? "早押しクイズ" : "15秒あてゲーム";
+            document.getElementById('selected-mode-title').innerText = mode === 'quiz' ? "早押しクイズ" : "秒数あてゲーム";
             showScreen('screen-role-select');
         }
 
@@ -171,8 +171,8 @@
 
                 // 15秒あての場合は15秒に近い順にソート
                 if(appMode === 'timer') {
-                    logs.sort((a, b) => Math.abs(a.time - 15) - Math.abs(b.time - 15));
-                } else {
+//                  logs.sort((a, b) => Math.abs(a.time - 15) - Math.abs(b.time - 15));
+//              } else {
                     logs.sort((a, b) => a.time - b.time);
                 }
 
@@ -246,7 +246,7 @@
                 msg.innerText = "記録されました";
             } else {
                 btn.className = "big-btn btn-active";
-                msg.innerText = appMode === 'quiz' ? "今だ！" : "15秒で止めて！";
+                msg.innerText = appMode === 'quiz' ? "今だ！" : "ピッタリで止めて！";
             }
         }
 
